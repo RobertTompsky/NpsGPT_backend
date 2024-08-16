@@ -2,6 +2,7 @@ import { FastifyServerOptions } from 'fastify'
 import { buildApp } from './app'
 
 const start = async () => {
+    //вроде как для логгирования используется библиотека pino
     const options: Partial<FastifyServerOptions> = {
         logger: true
     }

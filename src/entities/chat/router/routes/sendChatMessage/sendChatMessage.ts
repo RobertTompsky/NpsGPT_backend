@@ -6,6 +6,7 @@ import { setHeaders } from "@/lib/utils";
 import { FastifyInstance, FastifyRequest } from "fastify";
 
 export const sendChatMessage = async (fastify: FastifyInstance) => {
+    //можно сразу через метод get/post/patch/delete
     fastify.route({
         method: 'POST',
         url: '/sendChatMessage',
