@@ -1,4 +1,4 @@
-import { IChatRequestPayload } from "@/entities/chat/types/types";
+import { IChatRequestPayload } from "@/entities/chat";
 import { createConversationChain } from "@/large_language_models/chains";
 import { extractFromMessages } from "@/large_language_models/lib/utils";
 import { STREAM_HEADERS } from "@/lib/data";
@@ -11,13 +11,18 @@ export const sendChatMessage = async (fastify: FastifyInstance) => {
         method: 'POST',
         url: '/sendChatMessage',
         handler: async (request: FastifyRequest<{ Body: IChatRequestPayload }>, reply) => {
-            const { messages, chatId } = request.body
+            const { messages, chatId, prompt, model } = request.body
             const { previousMessages, currentInput } = extractFromMessages(messages)
 
             setHeaders(STREAM_HEADERS, reply)
             
             try {
-                const chain = await createConversationChain(previousMessages)
+                const chain = await createConversationChain({
+                    messages: previousMessages,
+                    prompt,
+                    model
+                })
+                
                 const stream = await chain.stream(
                     {
                         input: currentInput

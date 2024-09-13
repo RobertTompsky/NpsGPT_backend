@@ -5,5 +5,7 @@ export interface IMessage {
 
 export interface IChatRequestPayload {
     messages: IMessage[]
+    prompt: string
+    model: string
     chatId: string
 }

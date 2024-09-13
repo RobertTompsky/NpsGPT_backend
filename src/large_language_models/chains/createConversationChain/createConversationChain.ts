@@ -12,23 +12,23 @@ import {
     RunnableWithMessageHistory 
 } from "@langchain/core/runnables";
 import { ChatMessageHistory } from "langchain/memory";
-import { IMessage } from "@/entities/chat";
+import { IChatRequestPayload } from "@/entities/chat";
 import { createBaseMessagesFromChat } from "@/large_language_models/lib/utils";
 import 'dotenv/config'
 
-export const createConversationChain = async (messages: IMessage[]) => {
+export const createConversationChain = async (payload: Omit<IChatRequestPayload, 'chatId'>) => {
 
-    const historyBaseMessages = createBaseMessagesFromChat(messages)
+    const historyBaseMessages = createBaseMessagesFromChat(payload.messages)
 
     const prompt = ChatPromptTemplate.fromMessages([
-        SystemMessagePromptTemplate.fromTemplate('You are a helpful assistant'),
+        SystemMessagePromptTemplate.fromTemplate(payload.prompt),
         new MessagesPlaceholder('chat_history'),
         HumanMessagePromptTemplate.fromTemplate("{input}")
     ])
 
     const llm = new ChatOpenAI({
         apiKey: process.env.API_KEY,
-        model: 'gpt-4o-mini',
+        model: payload.model,
         temperature: 1,
         streaming: true
     })
