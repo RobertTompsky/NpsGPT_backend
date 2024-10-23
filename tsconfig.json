@@ -1,7 +1,7 @@
 {
     "compilerOptions": {
-        "module": "commonjs",
-        "target": "es6",
+        "module": "NodeNext",
+        "target": "es2023",
         "esModuleInterop": true,
         "baseUrl": "./",
         "paths": {

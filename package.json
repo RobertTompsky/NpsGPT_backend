@@ -11,19 +11,27 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@fastify/busboy": "^3.0.0",
     "@fastify/cors": "^9.0.1",
-    "@langchain/community": "^0.2.20",
-    "@langchain/core": "^0.2.18",
-    "@langchain/openai": "^0.2.5",
+    "@langchain/community": "^0.3.3",
+    "@langchain/core": "^0.3.3",
+    "@langchain/openai": "^0.3.2",
+    "@langchain/pinecone": "^0.1.0",
+    "@pinecone-database/pinecone": "^3.0.3",
+    "cheerio": "^1.0.0",
     "dotenv": "^16.4.5",
-    "fastify": "^4.28.1",
-    "langchain": "^0.2.11",
-    "nodemon": "^3.1.4",
+    "fastify": "^4.26.2",
+    "fs-extra": "^11.2.0",
+    "langchain": "^0.3.2",
+    "mammoth": "^1.8.0",
+    "nodemon": "^3.1.7",
+    "pdf-parse": "^1.1.1",
     "tsconfig-paths": "^4.2.0"
   },
   "devDependencies": {
-    "@types/node": "^20.14.12",
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^22.7.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.5.4"
+    "typescript": "^5.6.2"
   }
 }

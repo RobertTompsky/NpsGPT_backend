@@ -12,11 +12,11 @@ import {
     RunnableWithMessageHistory 
 } from "@langchain/core/runnables";
 import { ChatMessageHistory } from "langchain/memory";
-import { IChatRequestPayload } from "@/entities/chat";
+import { ICreateChainPayload } from "@/entities/chat";
 import { createBaseMessagesFromChat } from "@/large_language_models/lib/utils";
-import 'dotenv/config'
+import { getOpenAIModel } from "@/large_language_models/llm";
 
-export const createConversationChain = async (payload: Omit<IChatRequestPayload, 'chatId'>) => {
+export const createConversationChain = async (payload: ICreateChainPayload) => {
 
     const historyBaseMessages = createBaseMessagesFromChat(payload.messages)
 
@@ -26,12 +26,7 @@ export const createConversationChain = async (payload: Omit<IChatRequestPayload,
         HumanMessagePromptTemplate.fromTemplate("{input}")
     ])
 
-    const llm = new ChatOpenAI({
-        apiKey: process.env.API_KEY,
-        model: payload.model,
-        temperature: 1,
-        streaming: true
-    })
+    const llm = getOpenAIModel(payload.model)
 
     const chain = RunnableSequence.from([
         RunnablePassthrough.assign({
