@@ -4,6 +4,7 @@ import { extractFromMessages } from "@/large_language_models/lib/utils";
 import { STREAM_HEADERS } from "@/lib/data";
 import { setHeaders } from "@/lib/utils";
 import { Runnable } from "@langchain/core/runnables";
+import { IterableReadableStream } from "@langchain/core/utils/stream";
 import { FastifyInstance, FastifyRequest } from "fastify";
 
 export const sendChatMessage = async (fastify: FastifyInstance) => {
@@ -49,7 +50,7 @@ export const sendChatMessage = async (fastify: FastifyInstance) => {
                             sessionId: chatId
                         }
                     }
-                )
+                ) as IterableReadableStream<string>
 
                 for await (const chunk of stream) {
                     //console.log(chunk)
