@@ -1,23 +1,23 @@
-import { BaseMessage, HumanMessage, RemoveMessage, SystemMessage } from "@langchain/core/messages";
-import { Annotation, END, Messages, messagesStateReducer, START, StateGraph } from "@langchain/langgraph";
+import { AIMessage, BaseMessage, HumanMessage, RemoveMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
+import { Annotation, END, messagesStateReducer, START, StateGraph } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
 import { v4 as uuidv4 } from "uuid";
 import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
-import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { StringOutputParser } from "@langchain/core/output_parsers";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
+import { cryptoTool, webSearchTool } from "./tools";
+import { cryptoNewsGraph, ICryptoNewsGraphState, IWebSearchToolArgs } from "./cryptoNewsGraph";
 
 export const callAgent = async () => {
     const AgentState = Annotation.Root({
-        messages: Annotation<BaseMessage[], Messages>({
+        messages: Annotation<BaseMessage[]>({
             reducer: messagesStateReducer,
             default: (): BaseMessage[] => []
         }),
-        summary: Annotation<string>({
-            reducer: (_current, update) => update,
-            default: () => ''
+        summary: Annotation<string[]>({
+            reducer: (current?, update?) => update ?? current ?? [],
+            default: (): string[] => [],
         })
     })
 
@@ -29,54 +29,6 @@ export const callAgent = async () => {
         temperature: 1
     })
 
-    const cryptoTool = tool(async ({ query }) => {
-        const systemMessage = new SystemMessage({
-            id: uuidv4(),
-            content: `Extract the name of the cryptocurrency mentioned in the following message 
-            and return its corresponding ticker symbol (e.g., 'Bitcoin' or any other related names 
-            of Bitcoin should be converted to 'BTC'). If a cryptocurrency's ticker symbol is already 
-            provided in the message (e.g., "BTC", "ETH", "SOL"), just extract and return it as is.`
-        })
-
-        const humanMessage = new HumanMessage({
-            id: uuidv4(),
-            content: query
-        })
-
-        const llmWithParser = llm.pipe(new StringOutputParser())
-
-        try {
-            const crypto = await llmWithParser.invoke([systemMessage, humanMessage])
-
-            const url = `https://api.coinbase.com/v2/prices/${crypto}-USD/buy`;
-            const response = await fetch(url)
-
-            interface ApiResponse {
-                data: {
-                    amount: string
-                    currency: string
-                }
-            }
-
-            const {
-                data: {
-                    amount,
-                    currency
-                }
-            }: ApiResponse = await response.json()
-
-            return `${crypto}'s price is ${amount} ${currency}`
-        } catch {
-            return `Can't find price`
-        }
-    }, {
-        name: 'cryptocurrency',
-        description: "Call to get the current price of a cryptocurrency.",
-        schema: z.object({
-            query: z.string().describe("The query to use in your search.")
-        })
-    })
-
     const tools = [cryptoTool]
 
     const toolNode = new ToolNode(tools)
@@ -85,15 +37,16 @@ export const callAgent = async () => {
         const { summary } = state
         let { messages } = state
 
-        if (summary) {
+        if (summary.length > 0) {
             const systemMessage = new SystemMessage({
                 id: uuidv4(),
-                content: `Summary of conversation earlier: ${summary}`
+                content: `Summary of conversation earlier:\n\n` +
+                    `${summary.join("\n")}`
             })
             messages = [systemMessage, ...messages]
         }
 
-        const llmWithTools = llm.bindTools(tools)
+        const llmWithTools = llm.bindTools([cryptoTool, webSearchTool])
         const response = await llmWithTools.invoke(messages)
 
         const update = {
@@ -104,12 +57,16 @@ export const callAgent = async () => {
     }
 
     const summarizeConversation = async (state: IState): Promise<Partial<IState>> => {
-        const { summary, messages } = state;
+        const { summary } = state;
+        let { messages } = state
         let summaryMessage: string;
 
-        if (summary) {
-            summaryMessage = `This is summary of the conversation to date: ${summary}\n\n` +
-                "Extend the summary by taking into account the new messages above:";
+        if (summary.length > 0) {
+            messages = messages.slice(1)
+            summaryMessage = `This is summary of the conversation to date:\n\n` +
+                `${summary.join('\n')}\n\n` +
+                "Extend the summary by taking into account the new messages above. \n" +
+                "Return only the summary of the new provided messages, without repeating the old summary."
         } else {
             summaryMessage = "Create a summary of the conversation above:";
         }
@@ -118,52 +75,140 @@ export const callAgent = async () => {
             id: uuidv4(),
             content: summaryMessage
         })]
-        const response = await llm.invoke(allMessages)
+
+        const outputSchema = z.object({
+            points: z
+                .array(z.string())
+                .describe(
+                    "Key points of each interaction, where each point summarizes a single message, either " +
+                    "from the user or the LLM, in a concise form and in sequential order.\n" +
+                    "Each element should represent the essence of one message (user's or LLM's), not the full interaction.\n\n" +
+                    "Example format:\n" +
+                    "User says [sample text] (replace with actual user message).\n" +
+                    "LLM responds [sample text] (replace with actual LLM response).\n" +
+                    "User asks for the price of Ethereum (ETH).\n" +
+                    "LLM states that the price is 3598.04 USD."
+                )
+        })
+
+        const { points } = await llm.withStructuredOutput(outputSchema).invoke(allMessages)
+
+        if (!Array.isArray(points)) {
+            throw new Error("Expected an array response from the model");
+        }
+
+        const interactions = points.reduce((acc: string[], point, index) => {
+            if (index % 2 === 0 && points[index + 1]) {
+                acc.push(`${point} ${points[index + 1]}`);
+            }
+            return acc;
+        }, []);
+
+        let updatedSummary = [...summary, ...interactions]
+
+        updatedSummary = updatedSummary.length > 5
+            ? updatedSummary.slice(-3)
+            : updatedSummary
 
         const deleteMessages = messages
             .slice(0, -1)
             .map(m => new RemoveMessage({ id: m.id }))
 
-        if (typeof response.content !== "string") {
-            throw new Error("Expected a string response from the model");
-        }
-
         return {
-            summary: response.content,
+            summary: updatedSummary,
             messages: deleteMessages
         }
     }
 
+    const isAiMessageWithToolCalls = (message: BaseMessage): message is AIMessage => {
+        const messageType = message.getType()
+
+        const hasToolCalls = 'tool_calls' in message &&
+            Array.isArray(message.tool_calls) &&
+            message.tool_calls.length > 0
+
+        return (
+            messageType === 'ai' &&
+            hasToolCalls
+        )
+    }
+
     const shouldContinue = (state: IState):
-        'summarize_conversation' | 'tools' | typeof END => {
+        'summarize_conversation' | ("tools" | 'crypto_news_node')[] | typeof END => {
         const messages = state.messages
         const lastMessage = messages[messages.length - 1]
 
-        if (messages.length > 4) {
+        if (messages.length > 4 && !isAiMessageWithToolCalls(lastMessage)) {
             return 'summarize_conversation'
-        } else if (
-            'tool_calls' in lastMessage &&
-            Array.isArray(lastMessage.tool_calls) &&
-            lastMessage.tool_calls?.length
-        ) {
-            return 'tools'
+        }
+
+        if (isAiMessageWithToolCalls(lastMessage)) {
+            const { tool_calls } = lastMessage
+
+            const toolCallResult = tool_calls.map((tc) => {
+                if (tc.name === 'web_search_crypto') {
+                    return 'crypto_news_node'
+                } else {
+                    return 'tools'
+                }
+            })
+
+            return toolCallResult
         }
 
         return END
     }
 
+    const cryptoNewsNode = async (state: IState): Promise<Partial<IState>> => {
+        const { messages } = state
+
+        const userMessages = messages.filter(m => m.getType() === 'human') as HumanMessage[]
+        const lastUserQuery = userMessages[userMessages.length - 1].content as string
+
+        const lastMessage = messages[messages.length - 1]
+
+        if (isAiMessageWithToolCalls(lastMessage)) {
+            const webSearchTool = lastMessage.tool_calls.find((tc) => tc.name === 'web_search_crypto')
+
+            const { queries, token } = webSearchTool.args as IWebSearchToolArgs
+
+            const { aiResponseMessage }: ICryptoNewsGraphState = await cryptoNewsGraph.invoke({
+                initialQuery: lastUserQuery,
+                toolCallArgs: {
+                    queries,
+                    token
+                }
+            })
+
+            return {
+                messages: [
+                    new ToolMessage({
+                        id: uuidv4(),
+                        content: `News retrieved. Queries used: ${queries.join(', ')}`,
+                        tool_call_id: webSearchTool.id
+                    }),
+                    aiResponseMessage
+                ]
+            }
+
+        } else {
+            throw new Error('Exprected AIMessage')
+        }
+    }
+
     const workflow = new StateGraph(AgentState)
         .addNode('model', callModel)
         .addNode('summarize_conversation', summarizeConversation)
+        .addNode('crypto_news_node', cryptoNewsNode)
         .addNode('tools', toolNode)
         .addEdge(START, 'model')
         .addConditionalEdges('model', shouldContinue, [
             'summarize_conversation',
+            'crypto_news_node',
             'tools',
             END
         ])
         .addEdge('tools', 'model')
-        .addEdge('summarize_conversation', END)
 
     const memory = SqliteSaver.fromConnString('checkpoints.db')
 
@@ -173,24 +218,27 @@ export const callAgent = async () => {
 
     const config = {
         configurable: {
-            thread_id: '322'
+            thread_id: '3m3gmbbsgn'
         },
-        streamMode: 'updates' as const
+        streamMode: 'updates' as const,
+        subgraphs: true
     }
 
     const printUpdate = (update: Record<string, any>) => {
         Object.keys(update).forEach((key) => {
-            const value = update[key]
+            const value = update[key] as IState
 
-            if ('messages' in value && Array.isArray(value.messages)) {
-                (value.messages as Array<BaseMessage>).forEach((msg) => {
-                    console.log(`\n [${msg.getType().toUpperCase()}]: ${msg.content}`)
-                })
-            }
+            console.log(value)
 
-            if ('summary' in value && value.summary) {
-                console.log(`\n [SUMMARY]: ${value.summary}`)
-            }
+            // if ('messages' in value && Array.isArray(value.messages)) {
+            //     value.messages.forEach((msg) => {
+            //         console.log(`\n [${msg.getType().toUpperCase()}]: ${msg.content}`)
+            //     })
+            // }
+
+            // if ('summary' in value && value.summary) {
+            //     console.log(`\n [SUMMARY]: ${value.summary}`)
+            // }
         })
     }
 
@@ -199,7 +247,7 @@ export const callAgent = async () => {
             messages: [
                 new HumanMessage({
                     id: uuidv4(),
-                    content: 'Как-то так'
+                    content: 'В инструменте webSearchTool многое еще нужно допиливать'
                 })
             ]
         },
