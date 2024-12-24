@@ -126,8 +126,12 @@ export const cryptoTool = tool(async ({ ticker, name, quantity }) => {
         return `Can't find price`
     }
 }, {
-    name: 'cryptocurrency',
-    description: "Call to get the current price of a cryptocurrency.",
+    name: "cryptocurrency_market_metrics",
+    description:
+        "Call to get the current price and market metrics of a specific cryptocurrency. " +
+        "Use this tool when you need financial information about a cryptocurrency, such as its current price, " +
+        "24h trading volume, market capitalization, percentage changes (24h, 7d, 30d, 1y), all-time high price, and more. " +
+        "**DO NOT USE** this tool for retrieving current news related to the token. ",
     schema: tokenSchema
 })
 

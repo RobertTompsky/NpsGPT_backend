@@ -247,7 +247,7 @@ export const callAgent = async () => {
             messages: [
                 new HumanMessage({
                     id: uuidv4(),
-                    content: 'В инструменте webSearchTool многое еще нужно допиливать'
+                    content: 'Да не, норм, ты только это, предупреждай брат '
                 })
             ]
         },
