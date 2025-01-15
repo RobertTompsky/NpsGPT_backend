@@ -29,26 +29,9 @@ export const callAgent = async () => {
         temperature: 1
     })
 
-    const cryptoTool = tool(async ({ query }) => {
-        const systemMessage = new SystemMessage({
-            id: uuidv4(),
-            content: `Extract the name of the cryptocurrency mentioned in the following message 
-            and return its corresponding ticker symbol (e.g., 'Bitcoin' or any other related names 
-            of Bitcoin should be converted to 'BTC'). If a cryptocurrency's ticker symbol is already 
-            provided in the message (e.g., "BTC", "ETH", "SOL"), just extract and return it as is.`
-        })
-
-        const humanMessage = new HumanMessage({
-            id: uuidv4(),
-            content: query
-        })
-
-        const llmWithParser = llm.pipe(new StringOutputParser())
-
+    const cryptoTool = tool(async ({ ticker }) => {
         try {
-            const crypto = await llmWithParser.invoke([systemMessage, humanMessage])
-
-            const url = `https://api.coinbase.com/v2/prices/${crypto}-USD/buy`;
+            const url = `https://api.coinbase.com/v2/prices/${ticker}-USD/buy`;
             const response = await fetch(url)
 
             interface ApiResponse {
@@ -73,7 +56,10 @@ export const callAgent = async () => {
         name: 'cryptocurrency',
         description: "Call to get the current price of a cryptocurrency.",
         schema: z.object({
-            query: z.string().describe("The query to use in your search.")
+            ticker: z
+                .string()
+                .describe("The official ticker symbol of the cryptocurrency, a short, uppercase code " + 
+                "used on exchanges and in APIs (e.g., 'BTC' for Bitcoin, 'ETH' for Ethereum, 'SOL' for Solana).")
         })
     })
 
@@ -138,14 +124,15 @@ export const callAgent = async () => {
         'summarize_conversation' | 'tools' | typeof END => {
         const messages = state.messages
         const lastMessage = messages[messages.length - 1]
-
-        if (messages.length > 4) {
-            return 'summarize_conversation'
-        } else if (
-            'tool_calls' in lastMessage &&
+        const hasToolCalls = 'tool_calls' in lastMessage &&
             Array.isArray(lastMessage.tool_calls) &&
-            lastMessage.tool_calls?.length
-        ) {
+            lastMessage.tool_calls?.length > 0
+
+        if (messages.length > 4 && !hasToolCalls) {
+            return 'summarize_conversation'
+        }
+
+        if (hasToolCalls) {
             return 'tools'
         }
 
