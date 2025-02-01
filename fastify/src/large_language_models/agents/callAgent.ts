@@ -1,11 +1,10 @@
-import { AIMessage, BaseMessage, HumanMessage, RemoveMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
+import { AIMessage, BaseMessage, HumanMessage, isAIMessageChunk, RemoveMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import { Annotation, END, messagesStateReducer, START, StateGraph } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
 import { v4 as uuidv4 } from "uuid";
 import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
-import { z } from "zod";
+import * as z from 'zod';
 import { ToolNode } from "@langchain/langgraph/prebuilt";
-import { IterableReadableStream } from "@langchain/core/utils/stream";
 import { cryptoTool, webSearchTool } from "./tools";
 import { cryptoNewsGraph, ICryptoNewsGraphState, IWebSearchToolArgs } from "./cryptoNewsGraph";
 
@@ -217,45 +216,48 @@ export const callAgent = async () => {
     })
 
     const config = {
+        version: 'v2' as const,
         configurable: {
-            thread_id: '3m3gmbbsgn'
+            thread_id: 'poutfsvv2'
         },
-        streamMode: 'updates' as const,
         subgraphs: true
     }
 
-    const printUpdate = (update: Record<string, any>) => {
-        Object.keys(update).forEach((key) => {
-            const value = update[key] as IState
-
-            console.log(value)
-
-            // if ('messages' in value && Array.isArray(value.messages)) {
-            //     value.messages.forEach((msg) => {
-            //         console.log(`\n [${msg.getType().toUpperCase()}]: ${msg.content}`)
-            //     })
-            // }
-
-            // if ('summary' in value && value.summary) {
-            //     console.log(`\n [SUMMARY]: ${value.summary}`)
-            // }
-        })
-    }
-
-    const result: IterableReadableStream<IState> = await app.stream(
+    const result = app.streamEvents(
         {
             messages: [
                 new HumanMessage({
                     id: uuidv4(),
-                    content: 'Да не, норм, ты только это, предупреждай брат '
+                    content: 'Какая столица Японии?'
                 })
             ]
         },
-        config
+        config,
+        {
+            includeNames: [
+                'ChatOpenAI',
+                'summarize_conversation'
+            ]
+        }
     )
 
-    for await (const event of result) {
-        printUpdate(event)
+    for await (const { name, event, data } of result) {
+        if (
+            event === 'on_chat_model_stream' &&
+            isAIMessageChunk(data.chunk) &&
+            (data.chunk.content as string).trim() !== ''
+        ) {
+            const content = data.chunk.content as string
+            console.log(content)
+        }
+
+        if (
+            name === 'summarize_conversation' &&
+            Array.isArray(data.output?.summary)
+        ) {
+            const summary = (data.output as IState).summary
+            console.log(summary)
+        }
     }
 
 }

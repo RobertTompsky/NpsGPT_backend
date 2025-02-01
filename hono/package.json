@@ -1,0 +1,24 @@
+{
+  "name": "hono",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server/index.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "@hono/zod-validator": "^0.4.2",
+    "@langchain/community": "^0.3.25",
+    "@langchain/core": "^0.3.31",
+    "@langchain/langgraph": "^0.2.41",
+    "@langchain/langgraph-checkpoint-sqlite": "^0.1.3",
+    "@langchain/openai": "^0.3.17",
+    "dotenv": "^16.4.7",
+    "hono": "^4.6.17",
+    "uuid": "^11.0.5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.17",
+    "tsx": "^4.7.1"
+  }
+}
